@@ -1,59 +1,95 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Sistema de Préstamos – Fondo de Asociados
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Sistema web desarrollado en **Laravel** para la gestión de un **fondo común de asociados**, donde varios socios aportan capital, se realizan préstamos a terceros y las utilidades se distribuyen proporcionalmente según el aporte de cada asociado.
 
-## About Laravel
+El sistema está diseñado con una arquitectura sólida, escalable y orientada a buenas prácticas de desarrollo backend.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Funcionalidad principal
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- Gestión de usuarios con **roles** (admin / asociado)
+- Autenticación segura (login / logout)
+- Gestión de asociados (socios inversionistas)
+- Gestión de clientes (personas o empresas)
+- Gestión de préstamos:
+  - Aprobación
+  - Desembolso
+  - Estados del préstamo
+- Generación de cuotas por préstamo
+- Registro de pagos
+- Asignación de pagos a cuotas
+- Control de caja (ledger financiero)
+- Cálculo de beneficios por periodo
+- Distribución de utilidades a asociados
+- Registro de acciones de cobranza
+- Sistema de notificaciones
+- Sistema de backups
+- Control de intentos de login (Rate Limiting)
 
-## Learning Laravel
+---
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+## Arquitectura y diseño
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- **Backend:** Laravel 12
+- **Base de datos:** MySQL
+- **Autenticación:** Laravel Breeze (Blade)
+- **ORM:** Eloquent
+- **Patrón:** MVC + Services (en evolución)
+- **Control financiero:** Ledger contable (tabla `caja`)
+- **Idioma de columnas:** Español (decisión consciente de dominio)
 
-## Laravel Sponsors
+---
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Roles del sistema
 
-### Premium Partners
+### Administrador
+- Acceso total al sistema
+- Aprobación de préstamos
+- Registro de pagos
+- Cálculo de beneficios
+- Distribución de utilidades
+- Gestión completa de datos
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+### Asociado
+- Usuario que aporta capital al fondo
+- Consulta de información financiera
+- Recepción de utilidades
+- Acceso restringido (solo lectura en la mayoría de módulos)
 
-## Contributing
+> Nota: Un usuario puede ser **admin**, **asociado**, o ambos.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+---
 
-## Code of Conduct
+## Estructura de base de datos (resumen)
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Algunas tablas clave:
 
-## Security Vulnerabilities
+- `users` – Usuarios del sistema
+- `roles` – Roles (admin / asociado)
+- `asociados` – Perfil financiero de socios
+- `clientes` – Clientes que reciben préstamos
+- `prestamos` – Préstamos otorgados
+- `cuotas` – Plan de pagos
+- `pagos` – Pagos recibidos
+- `asignacion_pagos` – Distribución del pago a cuotas
+- `caja` – Ledger financiero (entradas / salidas)
+- `periodo_beneficio` – Cálculo de utilidades por periodo
+- `distribucion` – Reparto de beneficios
+- `acciones` – Acciones de cobranza
+- `documentos` – Soportes y archivos
+- `notificaciones` – Notificaciones del sistema
+- `backups` – Registro de respaldos
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+---
 
-## License
+## Instalación local
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### Requisitos
+- PHP >= 8.2
+- Composer
+- Node.js >= 20
+- MySQL
+- Git
+
+
