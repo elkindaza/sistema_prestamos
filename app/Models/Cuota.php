@@ -23,6 +23,18 @@ class Cuota extends Model
         'pagado_en',
     ];
 
+    protected $casts = [
+        'fecha_vencimiento' => 'date',
+        'pagado_en' => 'datetime',
+        'capital_programado' => 'decimal:2',
+        'interes_programado' => 'decimal:2',
+        'total_programado' => 'decimal:2',
+        'interes_pagado' => 'decimal:2',
+        'mora_pagada' => 'decimal:2',
+        'total_pagado' => 'decimal:2',
+        'saldo_cuota' => 'decimal:2',
+    ];
+
     public function prestamo()
     {
         return $this->belongsTo(Prestamo::class, 'prestamo_id');
