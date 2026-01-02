@@ -33,14 +33,14 @@
     @if($prestamo->estado === 'en_analisis')
       <form method="POST" action="{{ route('admin.prestamos.aprobar', $prestamo) }}">
         @csrf
-        <button class="px-3 py-2 bg-green-600 text-white rounded">Aprobar</button>
+        <button class="px-3 py-2 bg-blue-600 text-white rounded">Aprobar</button>
       </form>
     @endif
 
     @if($prestamo->estado === 'aprobado')
       <form method="POST" action="{{ route('admin.prestamos.desembolsar', $prestamo) }}">
         @csrf
-        <button class="px-3 py-2 bg-blue-600 text-white rounded">Desembolsar (valida caja)</button>
+        <button class="px-3 py-2 bg-red-600 text-white rounded">Desembolsar (valida caja)</button>
       </form>
     @endif
 

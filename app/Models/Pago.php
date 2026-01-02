@@ -48,6 +48,12 @@ class Pago extends Model
     {
         return $this->hasMany(AsignacionPago::class, 'pago_id');
     }
+    public function cuotas()
+    {
+        return $this->belongsToMany(Cuota::class, 'asignacion_pagos', 'pago_id', 'cuota_id')
+            ->withPivot(['capital_pagado','intereses_pagado','mora_pagada','asignado_en'])
+            ->withoutTimestamps();
+    }
 
     public function movimientoCaja()
     {

@@ -39,9 +39,21 @@
                     📊 Cuotas
                 </a>
 
-                <a href="{{ route('admin.cuotas.index') }}"
+                <a href="{{ route('admin.pagos.index') }}"
                     class="block px-3 py-2 rounded hover:bg-gray-100">
-                    📊 Caja
+                    Pagos
+                </a>
+                <a href="{{ route('admin.contribuciones.index') }}"
+                    class="block px-3 py-2 rounded hover:bg-gray-100">
+                    Contribuciones
+                </a>
+                <a href="{{ route('admin.caja.index') }}"
+                    class="block px-3 py-2 rounded hover:bg-gray-100">
+                    Caja
+                </a>
+                <a href="{{ route('admin.asignaciones.index') }}"
+                    class="block px-3 py-2 rounded hover:bg-gray-100">
+                    Asignaciones
                 </a>
                 <hr class="my-4">
 

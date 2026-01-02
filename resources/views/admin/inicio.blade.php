@@ -21,5 +21,25 @@
         <h3 class="font-bold">Cuotas</h3>
         <p class="text-sm text-gray-600">Crear, editar, eliminar</p>
     </a>
+    <a href="{{ route('admin.pagos.index') }}"
+        class="bg-white p-6 rounded shadow hover:shadow-md">
+        <h3 class="font-bold">Pagos</h3>
+        <p class="text-sm text-gray-600">Crear, editar, eliminar</p>
+    </a>
+      <a href="{{ route('admin.contribuciones.index') }}"
+        class="bg-white p-6 rounded shadow hover:shadow-md">
+        <h3 class="font-bold">Contribuciones</h3>
+        <p class="text-sm text-gray-600">Crear, editar, eliminar</p>
+    </a>
+     <a href="{{ route('admin.caja.index') }}"
+        class="bg-white p-6 rounded shadow hover:shadow-md">
+        <h3 class="font-bold">Caja</h3>
+        <p class="text-sm text-gray-600">Crear, editar, eliminar</p>
+    </a>
+    <a href="{{ route('admin.asignaciones.index') }}"
+        class="bg-white p-6 rounded shadow hover:shadow-md">
+        <h3 class="font-bold">Asignaciones</h3>
+        <p class="text-sm text-gray-600">Crear, editar, eliminar</p>
+    </a>
 </div>
 @endsection

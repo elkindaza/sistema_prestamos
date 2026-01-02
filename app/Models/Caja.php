@@ -24,6 +24,12 @@ class Caja extends Model
         'nota',
     ];
 
+
+    protected $casts = [
+        'fecha' => 'datetime',
+        'monto' => 'decimal:2',
+        'saldo_despues' => 'decimal:2',
+    ];
     public function creadoPor()
     {
         return $this->belongsTo(User::class, 'creado_por');

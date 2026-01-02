@@ -18,6 +18,10 @@ class Contribucion extends Model
         'referencia',
         'adjunto_id',
     ];
+    protected $casts = [
+        'aportado_en' => 'datetime',
+        'monto' => 'decimal:2',
+    ];
 
     public function asociado()
     {
