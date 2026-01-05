@@ -17,7 +17,7 @@ class PagosController extends Controller
     {
         $pagos = Pago::with([
                 'prestamo.cliente',
-                'asignaciones.cuota',   // ✅ aquí está la cuota (vía asignacion_pagos)
+                'asignaciones.cuota',
                 'recibidoPor',
                 'anuladoPor',
             ])
@@ -29,7 +29,6 @@ class PagosController extends Controller
 
     public function create()
     {
-        // Solo préstamos activos (si quieres incluir 'en_mora', agrégalo aquí)
         $prestamos = Prestamo::with('cliente')
             ->whereIn('estado', ['activo','en_mora'])
             ->orderByDesc('id')
@@ -42,7 +41,8 @@ class PagosController extends Controller
     {
         $data = $request->validate([
             'prestamo_id' => ['required', 'exists:prestamos,id'],
-            'cuota_id'    => ['required', 'exists:cuotas,id'],
+            // cuota_id ya NO es requerida. La dejamos opcional por si luego quieres “forzar cuota”.
+            'cuota_id'    => ['nullable', 'exists:cuotas,id'],
             'monto'       => ['required', 'numeric', 'min:1'],
             'metodo'      => ['required', 'string'],
             'referencia'  => ['nullable', 'string'],
@@ -52,61 +52,71 @@ class PagosController extends Controller
         DB::transaction(function () use ($data) {
 
             $prestamo = Prestamo::lockForUpdate()->findOrFail($data['prestamo_id']);
-            $cuota    = Cuota::lockForUpdate()->findOrFail($data['cuota_id']);
 
-            // ✅ Validación: la cuota debe pertenecer a ese préstamo
-            if ((int)$cuota->prestamo_id !== (int)$prestamo->id) {
-                abort(422, 'La cuota seleccionada no pertenece a ese préstamo.');
+            if (!in_array($prestamo->estado, ['activo', 'en_mora'])) {
+                abort(422, 'Solo se pueden registrar pagos para préstamos activos o en mora.');
             }
 
-            if ($cuota->estado === 'pagada') {
-                abort(400, 'La cuota ya está pagada');
-            }
-
-            if ($data['monto'] > $cuota->saldo_cuota) {
-                abort(400, 'El pago excede el saldo de la cuota');
-            }
-
-            // 1) Crear el pago
+            // 1) Crear el pago (evento)
             $pago = Pago::create([
                 'prestamo_id'  => $prestamo->id,
                 'pagado_en'    => now(),
                 'metodo'       => $data['metodo'],
-                'referencia'   => $data['referencia'],
+                'referencia'   => $data['referencia'] ?? null,
                 'recibido_por' => Auth::id(),
                 'monto'        => $data['monto'],
                 'estado'       => 'registrado',
-                'notas'        => $data['notas'],
+                'notas'        => $data['notas'] ?? null,
             ]);
 
-            // 2) Crear asignación (tabla asignacion_pagos)
-            AsignacionPago::create([
-                'pago_id'         => $pago->id,
-                'cuota_id'        => $cuota->id,
-                'capital_pagado'  => $data['monto'],
-                'intereses_pagado'=> 0,
-                'mora_pagada'     => 0,
-                'asignado_en'     => now(),
-            ]);
+            // 2) Asignar el pago: en orden de vencimiento (y número), o forzado si viene cuota_id
+            $montoRestante = (float)$data['monto'];
 
-            // 3) Actualizar cuota
-            $nuevoSaldo = $cuota->saldo_cuota - $data['monto'];
+            if (!empty($data['cuota_id'])) {
+                // ✅ Forzar a una cuota específica (opcional)
+                $cuota = Cuota::lockForUpdate()->findOrFail($data['cuota_id']);
 
-            $cuota->update([
-                'total_pagado' => $cuota->total_pagado + $data['monto'],
-                'saldo_cuota'  => $nuevoSaldo,
-                'estado'       => $nuevoSaldo == 0 ? 'pagada' : 'parcial',
-                'pagado_en'    => $nuevoSaldo == 0 ? now() : null,
-            ]);
+                if ((int)$cuota->prestamo_id !== (int)$prestamo->id) {
+                    abort(422, 'La cuota seleccionada no pertenece a ese préstamo.');
+                }
+                if ($cuota->estado === 'pagada' || (float)$cuota->saldo_cuota <= 0) {
+                    abort(422, 'La cuota seleccionada ya está pagada.');
+                }
 
-            // 4) Registrar entrada en caja
-            $saldoAnterior = DB::table('caja')->orderByDesc('id')->value('saldo_despues') ?? 0;
+                // Aun así permitimos que el usuario pague más (multi-cuota) solo si tú quieres.
+                // Si quieres limitarlo, aquí podrías volver a validar.
+                $montoRestante = $this->aplicarMontoACuota($pago->id, $cuota, $montoRestante);
+            }
+
+            // ✅ Asignación automática a las demás cuotas (si quedó saldo)
+            if ($montoRestante > 0) {
+                $cuotas = Cuota::where('prestamo_id', $prestamo->id)
+                    ->whereIn('estado', ['pendiente', 'parcial', 'vencida'])
+                    ->where('saldo_cuota', '>', 0)
+                    ->orderBy('fecha_vencimiento')
+                    ->orderBy('numero')
+                    ->lockForUpdate()
+                    ->get();
+
+                foreach ($cuotas as $cuota) {
+                    if ($montoRestante <= 0) break;
+                    $montoRestante = $this->aplicarMontoACuota($pago->id, $cuota, $montoRestante);
+                }
+            }
+
+            // 3) Caja IN (blindado contra concurrencia: lock a la última fila)
+            $ultimaCaja = DB::table('caja')
+                ->orderByDesc('id')
+                ->lockForUpdate()
+                ->first();
+
+            $saldoAnterior = $ultimaCaja->saldo_despues ?? 0;
 
             DB::table('caja')->insert([
                 'fecha'           => now(),
                 'monto'           => $data['monto'],
                 'direccion'       => 'IN',
-                'concepto'        => 'Pago cuota #' . $cuota->numero,
+                'concepto'        => 'Pago préstamo #' . $prestamo->id,
                 'tipo_referencia' => 'pago',
                 'id_referencia'   => $pago->id,
                 'creado_por'      => Auth::id(),
@@ -114,11 +124,51 @@ class PagosController extends Controller
                 'estado'          => 'normal',
                 'created_at'      => now(),
             ]);
+
+            // Opcional: si quieres prohibir “saldo a favor” por ahora:
+            // if ($montoRestante > 0) abort(422, 'El pago excede el saldo total pendiente del préstamo.');
+            // Si NO lo prohíbes, te queda un "saldo a favor" implícito (pero aún no lo guardas en DB).
         });
 
         return redirect()
             ->route('admin.pagos.index')
             ->with('success', 'Pago registrado correctamente');
+    }
+
+    /**
+     * Aplica un monto a una cuota y crea la asignación.
+     * Por ahora todo va a capital_pagado (intereses/mora = 0).
+     * Retorna el monto restante que NO se alcanzó a aplicar.
+     */
+    private function aplicarMontoACuota(int $pagoId, Cuota $cuota, float $montoDisponible): float
+    {
+        $saldo = (float)$cuota->saldo_cuota;
+        if ($saldo <= 0 || $montoDisponible <= 0) {
+            return $montoDisponible;
+        }
+
+        $aplicar = min($saldo, $montoDisponible);
+
+        AsignacionPago::create([
+            'pago_id'          => $pagoId,
+            'cuota_id'         => $cuota->id,
+            'capital_pagado'   => $aplicar,
+            'intereses_pagado' => 0,
+            'mora_pagada'      => 0,
+            'asignado_en'      => now(),
+        ]);
+
+        $nuevoSaldo = $saldo - $aplicar;
+        $nuevoTotalPagado = (float)$cuota->total_pagado + $aplicar;
+
+        $cuota->update([
+            'total_pagado' => $nuevoTotalPagado,
+            'saldo_cuota'  => $nuevoSaldo,
+            'estado'       => $nuevoSaldo <= 0 ? 'pagada' : 'parcial',
+            'pagado_en'    => $nuevoSaldo <= 0 ? now() : null,
+        ]);
+
+        return $montoDisponible - $aplicar;
     }
 
     public function show(Pago $pago)
@@ -136,13 +186,11 @@ class PagosController extends Controller
     public function edit(Pago $pago)
     {
         $pago->load(['prestamo.cliente','asignaciones.cuota']);
-
         return view('admin.pagos.edit', compact('pago'));
     }
 
     public function update(Request $request, Pago $pago)
     {
-        // Regla: si ya está anulado, no se edita
         if ($pago->estado === 'anulado') {
             return back()->with('error', 'No puedes editar un pago anulado.');
         }
@@ -168,22 +216,35 @@ class PagosController extends Controller
 
         DB::transaction(function () use ($pago) {
 
-            $pago->load('asignaciones.cuota');
+            $pago->load('asignaciones');
 
-            // 1) Revertir cada cuota según su asignación (si luego permites 1 pago -> varias cuotas)
+            // 1) Revertir cuotas según asignaciones
             foreach ($pago->asignaciones as $asig) {
                 $cuota = Cuota::lockForUpdate()->findOrFail($asig->cuota_id);
 
                 $cuota->update([
-                    'total_pagado' => $cuota->total_pagado - $asig->capital_pagado,
-                    'saldo_cuota'  => $cuota->saldo_cuota + $asig->capital_pagado,
-                    'estado'       => 'pendiente',
-                    'pagado_en'    => null,
+                    'total_pagado' => (float)$cuota->total_pagado - (float)$asig->capital_pagado,
+                    'saldo_cuota'  => (float)$cuota->saldo_cuota + (float)$asig->capital_pagado,
+                ]);
+
+                // Recalcular estado según saldo
+                $cuota->refresh();
+                $estado = ((float)$cuota->saldo_cuota <= 0) ? 'pagada' :
+                          (((float)$cuota->total_pagado <= 0) ? 'pendiente' : 'parcial');
+
+                $cuota->update([
+                    'estado'    => $estado,
+                    'pagado_en' => $estado === 'pagada' ? ($cuota->pagado_en ?? now()) : null,
                 ]);
             }
 
-            // 2) Caja OUT
-            $saldoAnterior = DB::table('caja')->orderByDesc('id')->value('saldo_despues') ?? 0;
+            // 2) Caja OUT (lock a la última fila)
+            $ultimaCaja = DB::table('caja')
+                ->orderByDesc('id')
+                ->lockForUpdate()
+                ->first();
+
+            $saldoAnterior = $ultimaCaja->saldo_despues ?? 0;
 
             DB::table('caja')->insert([
                 'fecha'           => now(),

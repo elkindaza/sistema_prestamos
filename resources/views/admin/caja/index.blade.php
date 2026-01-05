@@ -15,16 +15,17 @@
     </div>
 @endif
 
-<div class="flex items-start justify-between mb-4 gap-4">
+<div class="flex items-start justify-between mb-4 gap-4 ">
     <div>
-        <h2 class="text-xl font-semibold text-gray-800">Caja (Ledger)</h2>
-        <p class="text-sm text-gray-500">
-            Solo lectura. Se alimenta por contribuciones, desembolsos y pagos.
+        
+        <p class=" text-gray-500">
+            Solo Visualizacion. Se Agrega por contribuciones y pagos. <br>
+            Se Resta Por desembolsos a prestamos aprobados.
         </p>
     </div>
 
-    <div class="text-right">
-        <div class="text-xs text-gray-500">Saldo actual</div>
+    <div class="rounded-xl p-4 text-right"style="background:#ECFDF5;border:1px solid #A7F3D0">
+        <div class="text-xs uppercase tracking-wide"style="color:#065F46">Saldo actual</div>
         <div class="text-xl font-bold text-gray-900">
             $ {{ number_format($saldoActual, 2, ',', '.') }}
         </div>

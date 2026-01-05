@@ -24,7 +24,7 @@
                 </select>
             </div>
 
-            {{-- Cuota --}}
+            {{-- Cuota 
             <div>
                 <label class="block text-sm font-medium mb-1">Cuota</label>
                 <input type="number" name="asignacion_id" required
@@ -33,7 +33,7 @@
                 <p class="text-xs text-gray-500 mt-1">
                     (Luego podemos hacer selector automático)
                 </p>
-            </div>
+            </div>--}}
 
             {{-- Monto --}}
             <div>
