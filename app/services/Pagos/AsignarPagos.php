@@ -5,7 +5,6 @@ namespace App\Services\Pagos;
 use App\Models\Cuota;
 use App\Models\Pago;
 use App\Models\AsignacionPago;
-use App\Services\Prestamos\ActualizarEstadoPrestamo;
 
 class AsignarPagos
 {
@@ -15,10 +14,6 @@ class AsignarPagos
      *
      * @return float monto que NO se pudo asignar (saldo a favor), si sobra.
      */
-
-    public function __construct(
-        private ActualizarEstadoPrestamo $actualizarEstadoPrestamo
-    ) {}
     public function asignarEnOrden(Pago $pago, ?int $cuotaForzadaId = null): float
     {
         $montoRestante = (float) $pago->monto;
@@ -27,10 +22,10 @@ class AsignarPagos
         if (!empty($cuotaForzadaId)) {
             $cuota = Cuota::lockForUpdate()->findOrFail($cuotaForzadaId);
 
-            if ((int)$cuota->prestamo_id !== (int)$pago->prestamo_id) {
+            if ((int) $cuota->prestamo_id !== (int) $pago->prestamo_id) {
                 abort(422, 'La cuota seleccionada no pertenece a ese préstamo.');
             }
-            if ($cuota->estado === 'pagada' || (float)$cuota->saldo_cuota <= 0) {
+            if ($cuota->estado === 'pagada' || (float) $cuota->saldo_cuota <= 0) {
                 abort(422, 'La cuota seleccionada ya está pagada.');
             }
 
@@ -52,15 +47,16 @@ class AsignarPagos
                 $montoRestante = $this->aplicarMontoACuota($pago->id, $cuota, $montoRestante);
             }
         }
-        $prestamo = $pago->prestamo ?? $pago->load('prestamo')->prestamo;
-        $this->actualizarEstadoPrestamo->ejecutar($prestamo);
+
         return $montoRestante;
     }
 
     private function aplicarMontoACuota(int $pagoId, Cuota $cuota, float $montoDisponible): float
     {
         $saldo = (float) $cuota->saldo_cuota;
-        if ($saldo <= 0 || $montoDisponible <= 0) return $montoDisponible;
+        if ($saldo <= 0 || $montoDisponible <= 0) {
+            return $montoDisponible;
+        }
 
         $aplicar = min($saldo, $montoDisponible);
 
@@ -74,7 +70,7 @@ class AsignarPagos
         ]);
 
         $nuevoSaldo = $saldo - $aplicar;
-        $nuevoTotalPagado = (float)$cuota->total_pagado + $aplicar;
+        $nuevoTotalPagado = (float) $cuota->total_pagado + $aplicar;
 
         $cuota->update([
             'total_pagado' => $nuevoTotalPagado,

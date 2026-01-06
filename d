@@ -3,11 +3,11 @@
 
 @section('content')
 @if($errors->any())
-  <div class="mb-4 p-3 bg-red-50 text-red-700 rounded">
-    <ul class="list-disc ml-5">
-      @foreach($errors->all() as $e) <li>{{ $e }}</li> @endforeach
-    </ul>
-  </div>
+<div class="mb-4 p-3 bg-red-50 text-red-700 rounded">
+  <ul class="list-disc ml-5">
+    @foreach($errors->all() as $e) <li>{{ $e }}</li> @endforeach
+  </ul>
+</div>
 @endif
 
 <form method="POST" action="{{ route('admin.prestamos.store') }}" class="bg-white p-6 rounded shadow space-y-4">
@@ -18,7 +18,7 @@
     <select name="cliente_id" class="border rounded px-3 py-2 w-full" required>
       <option value="">-- Selecciona --</option>
       @foreach($clientes as $c)
-        <option value="{{ $c->id }}" @selected(old('cliente_id')==$c->id)>{{ $c->nombre_completo }} ({{ $c->tipo_documento }} {{ $c->numero_documento }})</option>
+      <option value="{{ $c->id }}" @selected(old('cliente_id')==$c->id)>{{ $c->nombre_completo }} ({{ $c->tipo_documento }} {{ $c->numero_documento }})</option>
       @endforeach
     </select>
   </div>
@@ -41,37 +41,38 @@
   <div class="grid grid-cols-3 gap-4">
     <div>
       <label class="block text-sm mb-1">Tipo interés</label>
+
       <select name="tipo_interes" class="border rounded px-3 py-2 w-full" required>
         <option value="mensual" selected>mensual</option>
       </select>
     </div>
 
     <div>
-  <label class="block text-sm mb-1">Tipo cuota</label>
-  <select name="tipo_cuota" class="border rounded px-3 py-2 w-full" required>
-    <option value="capital_fijo" @selected(old('tipo_cuota','capital_fijo')=='capital_fijo')>
-      Capital fijo (capital + interés cada mes)
-    </option>
+      <label class="block text-sm mb-1">Tipo cuota</label>
+      <select name="tipo_cuota" class="border rounded px-3 py-2 w-full" required>
+        <option value="capital_fijo" @selected(old('tipo_cuota','capital_fijo')=='capital_fijo' )>
+          Capital fijo (capital + interés cada mes)
+        </option>
 
-    <option value="fija" @selected(old('tipo_cuota')=='fija')>
-      Cuota fija (mensualidad fija)
-    </option>
+        <option value="fija" @selected(old('tipo_cuota')=='fija' )>
+          Cuota fija (mensualidad fija)
+        </option>
 
-    <option value="solo_interes" @selected(old('tipo_cuota')=='solo_interes')>
-      Solo interés (intereses mensuales y capital al final)
-    </option>
-  </select>
+        <option value="solo_interes" @selected(old('tipo_cuota')=='solo_interes' )>
+          Solo interés (intereses mensuales y capital al final)
+        </option>
+      </select>
 
-  <p class="text-xs text-gray-500 mt-1">
-    Nota: “Solo interés” genera cuotas solo de interés y la última incluye el capital.
-  </p>
-</div>
+      <p class="text-xs text-gray-500 mt-1">
+        Nota: “Solo interés” genera cuotas solo de interés y la última incluye el capital.
+      </p>
+    </div>
 
     <div>
       <label class="block text-sm mb-1">Frecuencia</label>
       <select name="frecuencia" class="border rounded px-3 py-2 w-full" required>
-        <option value="mensual" @selected(old('frecuencia','mensual')=='mensual')>mensual</option>
-        <option value="quincenal" @selected(old('frecuencia')=='quincenal')>quincenal</option>
+        <option value="mensual" @selected(old('frecuencia','mensual')=='mensual' )>mensual</option>
+        <option value="quincenal" @selected(old('frecuencia')=='quincenal' )>quincenal</option>
       </select>
     </div>
   </div>

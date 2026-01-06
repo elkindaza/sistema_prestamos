@@ -6,13 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\Pago;
 use App\Models\Prestamo;
 use App\Models\Cuota;
-use App\Models\AsignacionPago;
+use App\Services\Pagos\AsignarPagos;
+use App\Services\Prestamos\ActualizarEstadoPrestamo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 
 class PagosController extends Controller
 {
+    public function __construct(
+        private ActualizarEstadoPrestamo $actualizarEstadoPrestamo,
+        private AsignarPagos $asignarPagos
+    ) {}
+
     public function index()
     {
         $pagos = Pago::with([
@@ -30,7 +36,7 @@ class PagosController extends Controller
     public function create()
     {
         $prestamos = Prestamo::with('cliente')
-            ->whereIn('estado', ['activo','en_mora'])
+            ->whereIn('estado', ['activo', 'en_mora'])
             ->orderByDesc('id')
             ->get();
 
@@ -41,7 +47,6 @@ class PagosController extends Controller
     {
         $data = $request->validate([
             'prestamo_id' => ['required', 'exists:prestamos,id'],
-            // cuota_id ya NO es requerida. La dejamos opcional por si luego quieres “forzar cuota”.
             'cuota_id'    => ['nullable', 'exists:cuotas,id'],
             'monto'       => ['required', 'numeric', 'min:1'],
             'metodo'      => ['required', 'string'],
@@ -53,8 +58,13 @@ class PagosController extends Controller
 
             $prestamo = Prestamo::lockForUpdate()->findOrFail($data['prestamo_id']);
 
-            if (!in_array($prestamo->estado, ['activo', 'en_mora'])) {
+            if (!in_array($prestamo->estado, ['activo', 'en_mora'], true)) {
                 abort(422, 'Solo se pueden registrar pagos para préstamos activos o en mora.');
+            }
+
+            //  Regla de integridad: no permitir pagos si no hay cuotas generadas
+            if (!$prestamo->cuotas()->exists()) {
+                abort(422, 'Este préstamo no tiene cuotas generadas. Genera/valida las cuotas antes de registrar pagos.');
             }
 
             // 1) Crear el pago (evento)
@@ -69,40 +79,11 @@ class PagosController extends Controller
                 'notas'        => $data['notas'] ?? null,
             ]);
 
-            // 2) Asignar el pago: en orden de vencimiento (y número), o forzado si viene cuota_id
-            $montoRestante = (float)$data['monto'];
-
-            if (!empty($data['cuota_id'])) {
-                // ✅ Forzar a una cuota específica (opcional)
-                $cuota = Cuota::lockForUpdate()->findOrFail($data['cuota_id']);
-
-                if ((int)$cuota->prestamo_id !== (int)$prestamo->id) {
-                    abort(422, 'La cuota seleccionada no pertenece a ese préstamo.');
-                }
-                if ($cuota->estado === 'pagada' || (float)$cuota->saldo_cuota <= 0) {
-                    abort(422, 'La cuota seleccionada ya está pagada.');
-                }
-
-                // Aun así permitimos que el usuario pague más (multi-cuota) solo si tú quieres.
-                // Si quieres limitarlo, aquí podrías volver a validar.
-                $montoRestante = $this->aplicarMontoACuota($pago->id, $cuota, $montoRestante);
-            }
-
-            // ✅ Asignación automática a las demás cuotas (si quedó saldo)
-            if ($montoRestante > 0) {
-                $cuotas = Cuota::where('prestamo_id', $prestamo->id)
-                    ->whereIn('estado', ['pendiente', 'parcial', 'vencida'])
-                    ->where('saldo_cuota', '>', 0)
-                    ->orderBy('fecha_vencimiento')
-                    ->orderBy('numero')
-                    ->lockForUpdate()
-                    ->get();
-
-                foreach ($cuotas as $cuota) {
-                    if ($montoRestante <= 0) break;
-                    $montoRestante = $this->aplicarMontoACuota($pago->id, $cuota, $montoRestante);
-                }
-            }
+            // 2) Asignar el pago usando el Service (sin duplicar lógica aquí)
+            $montoRestante = $this->asignarPagos->asignarEnOrden(
+                pago: $pago,
+                cuotaForzadaId: !empty($data['cuota_id']) ? (int)$data['cuota_id'] : null
+            );
 
             // 3) Caja IN (blindado contra concurrencia: lock a la última fila)
             $ultimaCaja = DB::table('caja')
@@ -126,49 +107,18 @@ class PagosController extends Controller
             ]);
 
             // Opcional: si quieres prohibir “saldo a favor” por ahora:
-            // if ($montoRestante > 0) abort(422, 'El pago excede el saldo total pendiente del préstamo.');
-            // Si NO lo prohíbes, te queda un "saldo a favor" implícito (pero aún no lo guardas en DB).
+            if ($montoRestante > 0) {
+                abort(422, 'El pago excede el saldo total pendiente del préstamo.');
+            }
+
+            // 4) Recalcular estado del préstamo (activo/en_mora/finalizado) según cuotas
+            $prestamo->refresh();
+            $this->actualizarEstadoPrestamo->ejecutar($prestamo);
         });
 
         return redirect()
             ->route('admin.pagos.index')
             ->with('success', 'Pago registrado correctamente');
-    }
-
-    /**
-     * Aplica un monto a una cuota y crea la asignación.
-     * Por ahora todo va a capital_pagado (intereses/mora = 0).
-     * Retorna el monto restante que NO se alcanzó a aplicar.
-     */
-    private function aplicarMontoACuota(int $pagoId, Cuota $cuota, float $montoDisponible): float
-    {
-        $saldo = (float)$cuota->saldo_cuota;
-        if ($saldo <= 0 || $montoDisponible <= 0) {
-            return $montoDisponible;
-        }
-
-        $aplicar = min($saldo, $montoDisponible);
-
-        AsignacionPago::create([
-            'pago_id'          => $pagoId,
-            'cuota_id'         => $cuota->id,
-            'capital_pagado'   => $aplicar,
-            'intereses_pagado' => 0,
-            'mora_pagada'      => 0,
-            'asignado_en'      => now(),
-        ]);
-
-        $nuevoSaldo = $saldo - $aplicar;
-        $nuevoTotalPagado = (float)$cuota->total_pagado + $aplicar;
-
-        $cuota->update([
-            'total_pagado' => $nuevoTotalPagado,
-            'saldo_cuota'  => $nuevoSaldo,
-            'estado'       => $nuevoSaldo <= 0 ? 'pagada' : 'parcial',
-            'pagado_en'    => $nuevoSaldo <= 0 ? now() : null,
-        ]);
-
-        return $montoDisponible - $aplicar;
     }
 
     public function show(Pago $pago)
@@ -185,7 +135,7 @@ class PagosController extends Controller
 
     public function edit(Pago $pago)
     {
-        $pago->load(['prestamo.cliente','asignaciones.cuota']);
+        $pago->load(['prestamo.cliente', 'asignaciones.cuota']);
         return view('admin.pagos.edit', compact('pago'));
     }
 
@@ -196,9 +146,9 @@ class PagosController extends Controller
         }
 
         $data = $request->validate([
-            'metodo'     => ['required','string'],
-            'referencia' => ['nullable','string'],
-            'notas'      => ['nullable','string'],
+            'metodo'     => ['required', 'string'],
+            'referencia' => ['nullable', 'string'],
+            'notas'      => ['nullable', 'string'],
         ]);
 
         $pago->update($data);
@@ -216,6 +166,9 @@ class PagosController extends Controller
 
         DB::transaction(function () use ($pago) {
 
+            // Lock del préstamo (para evitar carreras con otro pago/anulación)
+            $prestamo = Prestamo::lockForUpdate()->findOrFail($pago->prestamo_id);
+
             $pago->load('asignaciones');
 
             // 1) Revertir cuotas según asignaciones
@@ -223,14 +176,14 @@ class PagosController extends Controller
                 $cuota = Cuota::lockForUpdate()->findOrFail($asig->cuota_id);
 
                 $cuota->update([
-                    'total_pagado' => (float)$cuota->total_pagado - (float)$asig->capital_pagado,
-                    'saldo_cuota'  => (float)$cuota->saldo_cuota + (float)$asig->capital_pagado,
+                    'total_pagado' => (float) $cuota->total_pagado - (float) $asig->capital_pagado,
+                    'saldo_cuota'  => (float) $cuota->saldo_cuota + (float) $asig->capital_pagado,
                 ]);
 
                 // Recalcular estado según saldo
                 $cuota->refresh();
-                $estado = ((float)$cuota->saldo_cuota <= 0) ? 'pagada' :
-                          (((float)$cuota->total_pagado <= 0) ? 'pendiente' : 'parcial');
+                $estado = ((float) $cuota->saldo_cuota <= 0) ? 'pagada'
+                    : (((float) $cuota->total_pagado <= 0) ? 'pendiente' : 'parcial');
 
                 $cuota->update([
                     'estado'    => $estado,
@@ -265,6 +218,10 @@ class PagosController extends Controller
                 'anulado_en'  => now(),
                 'anulado_por' => Auth::id(),
             ]);
+
+            // 4) Recalcular estado del préstamo según cuotas
+            $prestamo->refresh();
+            $this->actualizarEstadoPrestamo->ejecutar($prestamo);
         });
 
         return back()->with('success', 'Pago anulado correctamente');
